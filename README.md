@@ -1,6 +1,6 @@
 # GTFS Protobuf to Trips (in Rust)
 
-This project contains code to take a window of GTFS Realtime data and tranform it to deck.gl trips.
+This project contains code to take a short timespan of GTFS Realtime data from a protobuf feed and tranform it for visualisation on a loop in deck.gl trips.
 
 I wrote it in Rust as a learning experience.
 
