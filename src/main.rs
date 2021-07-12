@@ -27,7 +27,8 @@ fn main() {
     gtfs_url: "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions".to_owned(),
     data_path: "./data".to_owned(),
     output_path: "./output".to_owned(),
-    expected_start_time: Some(1625176800) // 1625176800 == 2 July 2021 8:00:00 AM GMT+10:00
+    expected_start_time: Some(1625176800), // 1625176800 == 2 July 2021 8:00:00 AM GMT+10:00
+    expected_end_time: Some(1625180400) // 1625180400 == 9am
   };
   
 
@@ -38,7 +39,7 @@ fn main() {
   }
 
   let (trip_container, trip_stops) = read_files_and_parse_gtfs_data(&app_settings.data_path,
-    app_settings.expected_start_time);
+    app_settings.expected_start_time, app_settings.expected_end_time);
 
   match write_data_to_output(trip_container, trip_stops, &app_settings.output_path) {
     Err(why) => panic!("Error outputting results: {}", why),
@@ -63,7 +64,7 @@ fn request_gtfs_data_and_save(gtfs_url: &str, data_path: &str, number_of_minutes
   };
 }
 
-fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u64>) -> (TripContainer, Vec<TripStop>) {
+fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u64>, expected_end_time: Option<u64>) -> (TripContainer, Vec<TripStop>) {
   let paths = fs::read_dir(data_path).expect("Unable to read directory");
   let mut trip_container = TripContainer::new();
   for path in paths {
@@ -116,7 +117,8 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
     trip.waypoints.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
     if expected_start_time.is_some() {
       // Remove early times if we have an expected start time
-      trip.waypoints.retain(|i| i.timestamp > expected_start_time.unwrap());
+      trip.waypoints.retain(|i| i.timestamp > expected_start_time.unwrap() 
+        && (expected_end_time.is_none() || i.timestamp < expected_end_time.unwrap()));
     }
     let waypoint_count = trip.waypoints.len();
     for idx in 0..waypoint_count {
@@ -126,8 +128,9 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
       let seconds_between = trip.waypoints[idx+1].timestamp - trip.waypoints[idx].timestamp;
       let fraction60: f32 = 60f32 / seconds_between as f32;
       let distance = Trip::distance_travelled_in_meters_between(&trip.waypoints[idx], &trip.waypoints[idx+1]);
-      const HUNDRED_TEN_KM_PER_HR: f32 = 1833f32;
-      if distance > HUNDRED_TEN_KM_PER_HR && (distance * fraction60) > HUNDRED_TEN_KM_PER_HR {
+      const HUNDRED_TEN_KM_PER_HR_PER_MINUTE: f32 = 1833f32; // 1833 meters per minute
+      if distance > HUNDRED_TEN_KM_PER_HR_PER_MINUTE // distance between any two segments should not be too big
+      || (distance * fraction60) > HUNDRED_TEN_KM_PER_HR_PER_MINUTE { // the speed between two segments should not be faster than 110km/hr
         unrealistic_trip_ids.push(trip.vehicle_id.clone());
       }
     }

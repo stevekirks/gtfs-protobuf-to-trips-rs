@@ -11,6 +11,8 @@ pub struct AppSettings {
     pub data_path: String,
     /// Local path to output the transformed trip data
     pub output_path: String,
-    /// Set expected start time to exclude any early (dodgy?) times
-    pub expected_start_time: Option<u64>
+    /// Set expected start time to exclude any early times
+    pub expected_start_time: Option<u64>,
+    /// Set expected start time to exclude any late times
+    pub expected_end_time: Option<u64>
 }
