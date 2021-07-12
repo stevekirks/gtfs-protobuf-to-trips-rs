@@ -1,3 +1,6 @@
+mod app_settings;
+use app_settings::AppSettings;
+
 mod protos;
 use protos::gtfs_realtime::{FeedMessage, VehiclePosition_VehicleStopStatus};
 
@@ -7,11 +10,8 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::thread;
-
-mod app_settings;
-use app_settings::AppSettings;
 
 mod trip;
 use trip::{Trip, TripContainer, Waypoint};
@@ -65,6 +65,8 @@ fn request_gtfs_data_and_save(gtfs_url: &str, data_path: &str, number_of_minutes
 }
 
 fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u64>, expected_end_time: Option<u64>) -> (TripContainer, Vec<TripStop>) {
+  let start_of_file_parsing = Instant::now();
+
   let paths = fs::read_dir(data_path).expect("Unable to read directory");
   let mut trip_container = TripContainer::new();
   for path in paths {
@@ -77,8 +79,7 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
       println!("Reading file {}", file_name);
     }
 
-    let gtfs_bytes = fs::read(file_name.clone()).expect("Unable to read file");
-    let file_trips = parse_gtfs_data(gtfs_bytes);
+    let file_trips = parse_gtfs_data(&file_name);
     println!("{} trips in file {}", file_trips.iter().count(), file_name);
 
     for file_trip in file_trips {
@@ -210,10 +211,13 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
     println!("There are {} trip stops. Keeping most popular {}", number_of_trip_stops, trip_stops.iter().len());
   }
 
+  println!("Parsing files tool {} milliseconds", start_of_file_parsing.elapsed().as_millis());
+
   (trip_container, trip_stops)
 }
 
-fn parse_gtfs_data(gtfs_bytes: Vec<u8>) -> Vec<Trip> {
+fn parse_gtfs_data(file_name: &str) -> Vec<Trip> {
+  let gtfs_bytes = fs::read(file_name).expect("Unable to read file");
   let msg = FeedMessage::parse_from_bytes(&gtfs_bytes).expect("Unable to parse protobuf data");
   let mut trips: Vec<Trip> = Vec::new();
   for f_entity in msg.entity {
