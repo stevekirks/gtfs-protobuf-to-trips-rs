@@ -1,3 +1,7 @@
+use async_std::fs::File;
+use async_std::prelude::*;
+use futures::future::{join_all};
+
 mod app_settings;
 use app_settings::AppSettings;
 
@@ -19,7 +23,8 @@ use trip::{Trip, TripContainer, Waypoint};
 mod trip_stop;
 use trip_stop::{TripStop};
 
-fn main() {
+#[async_std::main]
+async fn main() {
   // Set these
   let app_settings = AppSettings {
     get_new_data: false,
@@ -39,7 +44,7 @@ fn main() {
   }
 
   let (trip_container, trip_stops) = read_files_and_parse_gtfs_data(&app_settings.data_path,
-    app_settings.expected_start_time, app_settings.expected_end_time);
+    app_settings.expected_start_time, app_settings.expected_end_time).await;
 
   match write_data_to_output(trip_container, trip_stops, &app_settings.output_path) {
     Err(why) => panic!("Error outputting results: {}", why),
@@ -64,11 +69,13 @@ fn request_gtfs_data_and_save(gtfs_url: &str, data_path: &str, number_of_minutes
   };
 }
 
-fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u64>, expected_end_time: Option<u64>) -> (TripContainer, Vec<TripStop>) {
+async fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u64>, expected_end_time: Option<u64>) -> (TripContainer, Vec<TripStop>) {
   let start_of_file_parsing = Instant::now();
 
   let paths = fs::read_dir(data_path).expect("Unable to read directory");
   let mut trip_container = TripContainer::new();
+
+  let mut file_futures = Vec::new();
   for path in paths {
     let file_name = path.expect("Unable to read path").path().into_os_string().into_string().expect("Unable to get name from path");
     
@@ -79,8 +86,18 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
       println!("Reading file {}", file_name);
     }
 
-    let file_trips = parse_gtfs_data(&file_name);
-    println!("{} trips in file {}", file_trips.iter().count(), file_name);
+    let file_future = parse_gtfs_data(file_name.clone());
+    file_futures.push(file_future);
+  }
+
+  let all_file_trips = join_all(file_futures).await;
+
+  println!("Parsing files took {} milliseconds", start_of_file_parsing.elapsed().as_millis());
+
+  let start_of_file_parsing_into_container = Instant::now();
+
+  for file_trips in all_file_trips {
+    println!("{} trips in file {}", file_trips.iter().count(), "file_name");
 
     for file_trip in file_trips {
       if !trip_container.trips.iter().any(|i| i.vehicle_id == file_trip.vehicle_id) {
@@ -211,13 +228,18 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
     println!("There are {} trip stops. Keeping most popular {}", number_of_trip_stops, trip_stops.iter().len());
   }
 
-  println!("Parsing files tool {} milliseconds", start_of_file_parsing.elapsed().as_millis());
+  println!("Parsing trips into container took {} milliseconds", start_of_file_parsing_into_container.elapsed().as_millis());
 
   (trip_container, trip_stops)
 }
 
-fn parse_gtfs_data(file_name: &str) -> Vec<Trip> {
-  let gtfs_bytes = fs::read(file_name).expect("Unable to read file");
+async fn parse_gtfs_data(file_name: String) -> Vec<Trip> {
+
+  let mut file = File::open(file_name).await.expect("Unable to open file");
+  let mut gtfs_bytes = Vec::new();
+  file.read_to_end(&mut gtfs_bytes).await.expect("Unable to read file");
+  //let gtfs_bytes = fs::read(file_name).await.expect("Unable to read file");
+
   let msg = FeedMessage::parse_from_bytes(&gtfs_bytes).expect("Unable to parse protobuf data");
   let mut trips: Vec<Trip> = Vec::new();
   for f_entity in msg.entity {

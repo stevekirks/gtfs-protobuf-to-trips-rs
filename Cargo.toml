@@ -5,7 +5,9 @@ authors = ["stevekirks"]
 edition = "2018"
 
 [dependencies]
-protobuf = "2.24.1"
+async-std = { version = "1.9", features = ["attributes"] }
+futures = "0.3"
+protobuf = "2.24"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.11", features = ["blocking"] }
