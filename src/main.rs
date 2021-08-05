@@ -10,6 +10,7 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::thread;
 
@@ -22,20 +23,26 @@ use trip_stop::{TripStop};
 fn main() {
   // Set these
   let app_settings = AppSettings {
-    get_new_data: false,
-    get_new_data_for_this_many_minutes: 240,
-    gtfs_url: "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions".to_owned(),
+    get_new_data: true,
+    get_new_data_for_this_many_minutes: 2,
+    gtfs_urls: [
+      ("South-East Queensland".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions".to_owned()),
+      ("Cairns".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/CNS/VehiclePositions".to_owned()),
+      ("Maryborough Hervey Bay".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/MHB/VehiclePositions".to_owned())
+    ]
+    .iter().cloned().collect(),
     data_path: "./data".to_owned(),
     output_path: "./output".to_owned(),
-    expected_start_time: Some(1625176800), // 1625176800 == 2 July 2021 8:00:00 AM GMT+10:00
-    expected_end_time: Some(1625180400) // 1625180400 == 9am
+    expected_start_time: Some(1627023600), // 1627023600 == 5pm
+    expected_end_time: Some(1627025400) // 1627025400 == 5:30
   };
   
-
   if app_settings.get_new_data {
-    request_gtfs_data_and_save(&app_settings.gtfs_url,
+    request_gtfs_data_and_save(&app_settings.gtfs_urls,
       &app_settings.data_path,
       app_settings.get_new_data_for_this_many_minutes);
+      println!("Finished data gathering");
+      return;
   }
 
   let (trip_container, trip_stops) = read_files_and_parse_gtfs_data(&app_settings.data_path,
@@ -47,20 +54,35 @@ fn main() {
   }
 }
 
-fn request_gtfs_data_and_save(gtfs_url: &str, data_path: &str, number_of_minutes: u32) {
+fn request_gtfs_data_and_save(gtfs_urls: &HashMap<String, String>, data_path: &str, number_of_minutes: u32) {
   let mut count = 0;
   loop {
-    let mut resp = reqwest::blocking::get(gtfs_url).expect("Unable to query endpoint");
-    let mut buf: Vec<u8> = Vec::new();
-    resp.copy_to(&mut buf).expect("Writing bytes failed");
-    let filename = format!("{}/gtfs-{}.dat", data_path, SystemTime::now().duration_since(UNIX_EPOCH).expect("Time not working").as_secs());
-    fs::write(&filename, buf).expect("Unable to write file");
-    println!("File written {}", filename);
+    let start = Instant::now();
+    for gtfs_url_key_val in gtfs_urls {
+      let mut resp = reqwest::blocking::get(gtfs_url_key_val.1).expect("Unable to query endpoint");
+      let mut buf: Vec<u8> = Vec::new();
+      resp.copy_to(&mut buf).expect("Writing bytes failed");
+      let sub_data_path = format!("{}/{}", data_path, gtfs_url_key_val.0);
+      if Path::new(data_path).exists() {
+        if !Path::new(&sub_data_path).exists() {
+          fs::create_dir(&sub_data_path).expect("Unable to create directory");
+        }
+      } else {
+        panic!("Output path does not exist : {}", data_path);
+      }
+      let filename = format!("{}/gtfs-{}.dat", 
+        sub_data_path, 
+        SystemTime::now().duration_since(UNIX_EPOCH).expect("Time not working").as_secs());
+      fs::write(&filename, buf).expect("Unable to write file");
+      println!("File written {}", filename);
+    }
     count += 1;
     if count > (number_of_minutes * 2) {
       break;
     }
-    thread::sleep(Duration::from_secs(30));
+    if start.elapsed() < Duration::from_secs(29) {
+      thread::sleep(Duration::from_secs(30) - start.elapsed());
+    }
   };
 }
 
@@ -147,6 +169,7 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
     && i.distance_travelled_in_meters() > 10000f32
     //&& i.waypoints.iter().any(|w| w.coordinates[1] > -26.989452) // Sunshine Coast only
   );
+  //-27.731124 south of brisbane
 
   // end of Trip Filters and Conditions
 

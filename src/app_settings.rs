@@ -6,7 +6,7 @@ pub struct AppSettings {
     pub get_new_data_for_this_many_minutes: u32,
     /// The URL to get new GTFS realtime data
     /// Only applicable if get_new_data is true
-    pub gtfs_url: String,
+    pub gtfs_urls: std::collections::HashMap<String, String>,
     /// Local path to save the raw GTFS realtime data
     pub data_path: String,
     /// Local path to output the transformed trip data
