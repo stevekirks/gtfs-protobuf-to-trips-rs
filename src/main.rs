@@ -23,18 +23,17 @@ use trip_stop::{TripStop};
 fn main() {
   // Set these
   let app_settings = AppSettings {
-    get_new_data: true,
-    get_new_data_for_this_many_minutes: 2,
+    get_new_data: false,
+    get_new_data_for_this_many_minutes: 40,
     gtfs_urls: [
       ("South-East Queensland".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions".to_owned()),
-      ("Cairns".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/CNS/VehiclePositions".to_owned()),
-      ("Maryborough Hervey Bay".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/MHB/VehiclePositions".to_owned())
+      ("Cairns".to_owned(), "https://gtfsrt.api.translink.com.au/api/realtime/CNS/VehiclePositions".to_owned())
     ]
     .iter().cloned().collect(),
     data_path: "./data".to_owned(),
     output_path: "./output".to_owned(),
-    expected_start_time: Some(1627023600), // 1627023600 == 5pm
-    expected_end_time: Some(1627025400) // 1627025400 == 5:30
+    expected_start_time: Some(1628294400), // 1628294400 == 10am
+    expected_end_time: Some(1628296200) // 1628296200 == 10:30
   };
   
   if app_settings.get_new_data {
@@ -45,7 +44,8 @@ fn main() {
       return;
   }
 
-  let (trip_container, trip_stops) = read_files_and_parse_gtfs_data(&app_settings.data_path,
+  let data_path = format!("{}/{}", app_settings.data_path, "South-East Queensland");
+  let (trip_container, trip_stops) = read_files_and_parse_gtfs_data(&data_path,
     app_settings.expected_start_time, app_settings.expected_end_time);
 
   match write_data_to_output(trip_container, trip_stops, &app_settings.output_path) {
@@ -165,10 +165,13 @@ fn read_files_and_parse_gtfs_data(data_path: &str, expected_start_time: Option<u
   // -   travel a minimum distance
   trip_container.trips.retain(|i| 
     !unrealistic_trip_ids.iter().any(|u| u == &i.vehicle_id)
-    && i.waypoints.iter().count() > 20 
-    && i.distance_travelled_in_meters() > 10000f32
+    && i.waypoints.iter().count() > 10 
+    && i.distance_travelled_in_meters() > 1000f32
     //&& i.waypoints.iter().any(|w| w.coordinates[1] > -26.989452) // Sunshine Coast only
+    //&& i.waypoints.iter().any(|w| w.coordinates[1] < -26.989452 && w.coordinates[1] > -27.731124) // Brisbane
+    //&& i.waypoints.iter().any(|w| w.coordinates[1] < -27.731124) // Gold Coast
   );
+  //-26.989452 north of brisbane
   //-27.731124 south of brisbane
 
   // end of Trip Filters and Conditions
